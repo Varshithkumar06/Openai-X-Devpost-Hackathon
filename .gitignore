@@ -1,16 +1,32 @@
+# Dependencies
 node_modules/
+
+# Environment variables (contains API keys)
 .env
+
+# Logs
 *.log
-*-screenshot.png
-.edge-profile/
-.chrome-profile/
-chrome-profile/
-Env/
-backup_current/
-.idea/
-.vscode/
-.DS_Store
+node_server.log
+chrome_start.log
+
+# Runtime data
 disaster_notifications.json
+chrome-profile/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+server/__pycache__/
+Env/
 
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Backups
+backup_current/

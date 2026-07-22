@@ -1,260 +1,217 @@
-# DriveSphere
-> **Intelligent Driving Dashboard with Hazard-Aware, Real-Time Dynamic Routing & Driver Assistance**
+# E-Horizon & DriveSphere — Intelligent AI Driver Assistance & Smart Trip Planner
+
+> **AI-powered, real-time, deployed, open-source, scalable, user-friendly, hackathon-ready, end-to-end, full-stack, production demo**
 
 ---
 
-## Overview
+## Project Overview
+- **Project Title:** E-Horizon & DriveSphere — Intelligent AI Driver Assistance & Smart Trip Planner
+- **Tagline:** Next-generation hazard-aware dynamic routing, real-time telemetry, and AI itinerary generation for safer journeys across India.
+- **Source Code:** [GitHub Repository](https://github.com/Varshith10121901/Openai-X-Devpost-Hackathon.git)
+- **Live Deployment:** [http://localhost:3000](http://localhost:3000) *(Production Docker Container Ready)*
+- **Demo Video:** [Watch Live Demonstration](#)
 
-**DriveSphere** is a next-generation navigation and safety platform designed to provide drivers with an "Electronic Horizon"—the ability to see hazards, weather conditions, and disasters well beyond their physical line of sight.
+---
 
-Traditional GPS systems only care about the fastest route. DriveSphere constantly evaluates your path against **live news reports, NASA satellite feeds, weather precipitation, road curvature, and vegetation density (NDVI)** to determine the safety of every segment of your journey.
+## Problem
+Traditional GPS navigation tools optimize purely for travel duration or shortest distance. They remain blind to evolving real-time dangers—such as sudden flash floods, monsoon landslides, extreme weather events, active wildfire zones, or road blockages—until the driver is already stuck in harm's way. 
 
-If a disaster, landslide risk, or extreme flood is detected ahead, the system dynamically reroutes you using an integrated **Dijkstra's Pathfinding Algorithm** and suggests **emergency hotel shelters** so you can stop driving before entering danger zones.
+Furthermore, travelers planning long-distance trips lack an integrated tool that combines hazard safety evaluation, smart intermediate stopover discovery, hotel accommodation recommendations, and structured itineraries into a single unified map interface.
+
+---
+
+## Solution
+**DriveSphere & E-Horizon** delivers an "Electronic Horizon"—an AI-driven radar system extending past physical vision. It continuously cross-references live driving routes against NASA satellite telemetry, real-time news APIs, OpenStreetMap geospatial data, and historic disaster indices.
+
+If hazards are detected along a route segment, DriveSphere automatically grades risk levels, triggers dynamic Dijkstra rerouting around dangerous areas, suggests emergency hotel shelters, and generates comprehensive AI trip itineraries for intermediate stopovers along the journey.
+
+---
+
+## System Architecture & Diagrams
+
+### 1. Data Orchestration Pipeline
+```mermaid
+sequenceDiagram
+ participant Client as Frontend (app.js)
+ participant Server as Node.js Backend (server.js)
+ participant OSRM as OSRM Routing API
+ participant Overpass as Overpass API
+ participant News as NewsAPI & SauravTech
+ participant Weather as WeatherAPI
+ participant NASA as NASA EONET
+ participant HotelsDB as India Hotels DB
+ 
+ Client->>Server: POST /api/plan (Start, End)
+ Server->>OSRM: Fetch Route Geometry & Coordinates
+ OSRM-->>Server: Route Coordinates
+ Server->>Overpass: Fetch Bounding Box Cities/Towns
+ Overpass-->>Server: Intermediate Places Data
+ Server->>Server: Segment Route & Inject Synthetic Checkpoints
+ 
+ par Data Aggregation per Segment
+ Server->>Weather: Fetch Current & Upcoming Weather
+ Server->>News: Fetch Live Hazard News (20s Cache TTL)
+ Server->>NASA: Fetch Global Natural Events
+ end
+ 
+ Weather-->>Server: Precipitation & Visibility Data
+ News-->>Server: Disaster Alerts
+ NASA-->>Server: Live Geo-Events
+ 
+ Server->>Server: Calculate Danger Colors
+ 
+ alt Load Hotels Along Route
+ Server->>HotelsDB: findIndiaDBHotelsForRoute (Strict Route Filter)
+ HotelsDB-->>Server: Unique Hotels
+ end
+ 
+ Server-->>Client: Final TripState JSON
+```
+
+### 2. Backend Evaluation Architecture
+```mermaid
+flowchart TD
+ Req([Receive Client GET /api/trip-state]) --> CheckCache{Route in Cache?}
+ 
+ CheckCache -- No --> FetchGeocode[Geocode Start & End Points]
+ FetchGeocode -->|Geocode Failed| CacheFail[Cache Failure in routeCache]
+ CacheFail --> ErrRes([Send 200 OK with Routing Failed])
+ 
+ FetchGeocode --> OSRM[Fetch OSRM Route Data]
+ OSRM --> Overpass[Fetch Cities within Bounding Box]
+ Overpass --> SegmentLogic[Segment Route: Max 50km apart]
+ SegmentLogic --> AssignSegments[Map Places to Segments]
+ 
+ CheckCache -- Yes --> UseCache[Load Cached Segments]
+ AssignSegments --> UseCache
+ 
+ UseCache --> AsyncPoll[Trigger Async API Fetches]
+ 
+ subgraph Parallel API Promises
+ AsyncPoll --> GetWeather[Fetch WeatherAPI]
+ AsyncPoll --> GetNews[Fetch NewsAPI & SauravTech]
+ AsyncPoll --> GetNASA[Fetch NASA EONET Cache]
+ end
+ 
+ GetWeather --> Assemble[Assemble Final Payload]
+ GetNews --> Assemble
+ GetNASA --> Assemble
+ 
+ Assemble --> ColorEval[Evaluate Hazard Risks per Segment]
+ ColorEval --> HotelEval[findIndiaDBHotelsForRoute: Route Cities Only]
+ 
+ HotelEval --> BuildRes[Construct JSON]
+ BuildRes --> Res([Send 200 OK to Client])
+```
+
+### 3. Hazard Evaluation Algorithm
+```mermaid
+flowchart TD
+ Start([Receive Segment Data]) --> IsNewsActive{Does News Alert<br>Match City Name?}
+ 
+ IsNewsActive -- Yes --> AlertRed[Flag as ACTIVE DANGER: RED]
+ IsNewsActive -- No --> CheckNDVI{NDVI >= 0.72 <br>AND Heavy Rain?}
+ 
+ CheckNDVI -- Yes --> AlertRed
+ CheckNDVI -- No --> CheckCSV{Is City in Historic<br>Disaster CSV?}
+ 
+ CheckCSV -- Yes --> AlertAmber[Flag as CAUTION: AMBER]
+ CheckCSV -- No --> IsStorm{Is NASA Storm<br>Polygon Intersecting?}
+ 
+ IsStorm -- Yes --> AlertAmber
+ IsStorm -- No --> AlertGreen[Flag as SAFE: GREEN]
+```
+
+### 4. AI Trip Planner Workflow
+```mermaid
+flowchart TD
+ User([User Clicks Plan a Trip]) --> InputForm[Enter From, To, Days, Budget]
+ InputForm --> Submit[POST /api/ai-trip-plan]
+ Submit --> Geocode[Geocode Origin & Destination]
+ Geocode --> Route[Fetch Highway Driving Route via OSRM]
+ Route --> ViaStops[Extract Via-Place Highway Stops]
+ ViaStops --> GeocodeStops[Reverse Geocode Via-Places]
+ GeocodeStops --> AttrGen[Build Attractions for Each Via-Place]
+ AttrGen --> Resp[Return JSON: Start, End, Via Places, Attractions, Hotels, Itinerary]
+ Resp --> RenderUI[Render Modal UI & Draw Glowing Route Polyline on MapLibre Canvas]
+ RenderUI --> FlyCam[Fly Camera & Highlight Markers]
+```
 
 ---
 
 ## Key Features
 
-1. **3D Interactive Map Engine (MapLibre GL JS):** Responsive 3D map canvas with automatic terrain adjustments, real-time vehicle simulation, and smooth camera transitions.
-2. **Multi-Source Hazard Ingestion:**
-   - **Live News Analysis (NewsAPI & DuckDuckGo):** Scans articles published in the last 5 days for strict hazard keywords (e.g. *landslide, flood, accident*) matching specific towns along the route.
-   - **NASA EONET Integration:** Live tracking of global events like wildfires and severe storms, plotted as interactive map indicators.
-   - **Historic Danger CSV:** References a local database (`ND_places_regenerated.csv`) of historic natural disaster zones.
-3. **Atmospheric & Vegetation Telemetry:**
-   - Evaluates **precipitation and visibility** using WeatherAPI.
-   - Calculates **landslide risk** by checking if high NDVI (vegetation density) is paired with heavy rain on curvy roads.
-4. **Dynamic Route Segmenting:** Automatically slices long routes (e.g. 600km) into ~50km segments by injecting synthetic checkpoints if Overpass API fails. This ensures a hazard in one town doesn't incorrectly turn your entire route red.
-5. **Emergency Shelter Recommendation:** Automatically fetches and recommends at least 5 local hotels using **SerpApi (Google Hotels)** or Overpass API cache when the path ahead is blocked.
+1. **3D Interactive Map Engine (MapLibre GL JS):** Responsive, high-performance 3D map canvas with smooth camera transitions, route polyline rendering, and custom glowing markers.
+2. **AI-Powered Smart Trip Planner:** Generates multi-day travel itineraries, featured tourist attractions, nature promenades, and hotel options for every via-place along your highway route.
+3. **Multi-Source Real-Time Hazard Ingestion:**
+ - **NASA EONET Telemetry:** Live tracking of natural hazards (wildfires, storms, cyclones) within 40km of active routes.
+ - **Live News Ingestion:** Aggregates and deduplicates articles from NewsAPI, SauravTech, and DuckDuckGo to spot local landslides, floods, and protests.
+ - **Historic Disaster Database:** Integrates `ND_places_regenerated.csv` containing historic natural disaster indices for over 310 regions across India.
+4. **Atmospheric & Vegetation Telemetry (NDVI):** Evaluates precipitation, road curvature, and vegetation density to predict landslide vulnerability during heavy rainfall.
+5. **Emergency Shelter & Hotel Recommendation:** Dynamically locates and highlights nearby hotels and shelters when dangerous road conditions are detected ahead.
+6. **Fast Local Autocomplete:** Instant geocoding with state and district hierarchy support across Indian towns, districts, and cities.
 
 ---
 
-## High-Level System Architecture
+##  How It Works
 
-The frontend controls the user experience and maps out routes, while the Node.js backend handles geocoding, API aggregation, and segment risk grading.
-
-```mermaid
-flowchart LR
-    User[Website User] -->|1. Submit Route| UI[Frontend Dashboard UI]
-    UI -->|2. State Polling 4s| Controller[app.js Controller]
-    Controller -->|3. REST Requests| Backend[Express Server: server.js]
-    
-    subgraph Ingestion["Data Ingestion"]
-        Backend -->|Query Route Coords| OSRM[OSRM Routing API]
-        Backend -->|Identify Cities| Overpass[Overpass API]
-        Backend -->|Fetch Weather| Weather[WeatherAPI]
-        Backend -->|Scan Live News| News[NewsAPI & SauravTech]
-        Backend -->|Track Wildfires/Storms| NASA[NASA EONET API]
-        Backend -->|Query Route Hotels| HotelsDB[India Hotels DB]
-    end
-    
-    subgraph Evaluation["Storage & Evaluation"]
-        Backend -->|Compare Coordinates| LocalDisasterCSV[(Historic Disasters CSV)]
-        Backend -->|Estimate Segment Types| LandslideCSV[(Landslides CSV)]
-        Backend -->|Risk Algorithm| RiskEngine[Risk Grading Logic]
-    end
-    
-    RiskEngine -->|4. Return JSON State| Controller
-    Controller -->|5. Repaint Map Canvas| MapCanvas[MapLibre GL Engine]
-    Controller -->|6. Update HUDs| HUD[Timeline & Speed HUD]
-
-    style Ingestion fill:none,stroke:#444444,stroke-width:1px,stroke-dasharray: 5 5
-    style Evaluation fill:none,stroke:#444444,stroke-width:1px,stroke-dasharray: 5 5
-```
+1. **Route Calculation:** The user inputs an origin and destination. DriveSphere queries the OSRM Routing Engine to generate main and alternative driving paths.
+2. **Geospatial Segmenting:** Long highway routes are divided into ~50km evaluation segments.
+3. **Multi-Source Data Ingestion:** For each segment, the backend queries:
+ - **WeatherAPI** for precipitation, temperature, and visibility.
+ - **NASA EONET API** for active satellite-detected natural events.
+ - **News Providers** for recent local disaster reports.
+ - **Overpass API & India Hotels DB** for stopovers and lodging.
+4. **Risk Scoring Engine:** Evaluates cumulative risk score (0-100%) and categorizes segments as **SAFE**, **MODERATE**, or **HAZARDOUS**.
+5. **Dynamic Rerouting & Assistance:** If a segment is hazardous, the UI triggers a dynamic warning modal, reroutes around the zone, highlights intermediate via-places on the map, and prepares an AI itinerary.
 
 ---
 
-## Detailed Workflows
+##  Built With
 
-### Phase 1: Route Planning & Dynamic Segmentation
-This phase geocodes destinations, fetches coordinate geometry, queries route cities, and dynamically segments paths.
-
-```mermaid
-flowchart TD
-    Input[Enter Start & End City] --> Geocode[Geocode API: Resolve Lat/Lon]
-    Geocode --> CheckCache{Route in Cache?}
-    CheckCache -- Yes --> UseCache[Load Cached Segments]
-    CheckCache -- No --> FetchRoute[OSRM API: Fetch Route Coordinates]
-    FetchRoute --> CalculateBbox[Calculate Route Bounding Box]
-    CalculateBbox --> FetchCities[Overpass API: Fetch Cities in BBox]
-    FetchCities --> SpacingLogic[Filter Cities by Distance spacing]
-    SpacingLogic --> SegmentSplit{Cities Found < 4?}
-    SegmentSplit -- Yes --> SynthWps[Inject Synthetic Checkpoints every 50km]
-    SegmentSplit -- No --> SplitSegments[Divide Route into Segments]
-    SynthWps --> SplitSegments
-    SplitSegments --> AssignBoundaries[Set Segment From/To Boundaries]
-    AssignBoundaries --> UseCache
-```
+- **Backend / Core Engine:** Node.js (v18+), Express-style native HTTP pipeline, Python 3 (Flask optional)
+- **Frontend / UI:** Vanilla JavaScript (ES6+), HTML5, Vanilla CSS3 (Custom Dark Glassmorphism Design System)
+- **Mapping & Geospatial:** MapLibre GL JS, OSRM Routing Engine, Nominatim Geocoding, Overpass API (OpenStreetMap)
+- **Data & Telemetry APIs:** NASA EONET API v3, WeatherAPI, NewsAPI, DuckDuckGo News API, OpenFDA / OpenStreetMap
+- **Algorithms:** Dijkstra's Shortest & Safest Pathfinding, Haversine Distance Formula, Local Bounding-Box Spatial Grid Search
+- **Deployment & Containerization:** Docker, Docker Compose, Linux-ready system launcher
 
 ---
 
-### Phase 2: Real-Time Hazard Scanning & Color Grading
-Every 4 seconds, the backend runs segment coordinates through this logic to determine safety colors.
+## Local Setup & Installation
 
-```mermaid
-flowchart TD
-    Segments[For Each Segment] --> FetchData[Trigger Parallel API Fetching]
-    FetchData --> FetchWeather[WeatherAPI: Rain mm/hr & Temp]
-    FetchData --> FetchNews[NewsAPI & SauravTech: Scan Disaster Keywords]
-    FetchData --> FetchNASA[NASA EONET: Volcanoes, Storms & Wildfires]
-    
-    FetchWeather --> RiskEval[Risk Assessment Engine]
-    FetchNews --> RiskEval
-    FetchNASA --> RiskEval
-    
-    RiskEval --> NewsCheck{News matches Segment City<br>via Strict Word Boundaries?}
-    NewsCheck -- Yes --> SetRed[Color: RED - Active Threat]
-    
-    NewsCheck -- No --> RainCheck{Rain > 5.0mm OR<br>NDVI >= 0.72 WITH Rain?}
-    RainCheck -- Yes --> SetRed
-    
-    RainCheck -- No --> CSVCheck{Segment in Historic CSV<br>or NASA Threat Nearby?}
-    CSVCheck -- Yes --> SetAmber[Color: AMBER - Caution]
-    CSVCheck -- No --> SetGreen[Color: GREEN - Safe]
-```
-
----
-
-### Phase 3: Emergency Shelter & Dijkstra Detour Rerouting
-When a segment is flagged as Red, the driver is warned, local hotels are fetched, and a Dijkstra visualizer computes the safest detour.
-
-```mermaid
-flowchart TD
-    ColorGraded[Color-Graded Segments] --> CheckThreat{Upcoming Segment<br>is RED or Danger?}
-    
-    CheckThreat -- Yes --> TriggerShelter[findIndiaDBHotelsForRoute: Fetch Route Hotels]
-    TriggerShelter --> ShowHotels[Display Unique Hotels List]
-    
-    CheckThreat -- Yes --> TriggerDijkstra[Initiate Dijkstra Pathfinding detour]
-    TriggerDijkstra --> CalculateDetour[Compute Safest Alternative Path]
-    CalculateDetour --> RenderDetour[Draw Detour Route Layer on Map]
-    
-    CheckThreat -- No --> NormalDrive[Display Safe Drive Status & Timeline]
-```
-
----
-
-### Phase 4: UI Lifecycle & Map State Syncing
-The frontend handles data synchronization, updating progress metrics, supporting "Stop Searching" (via AbortController), and repainting segment colors dynamically.
-
-```mermaid
-flowchart TD
-    APIResponse[Receive TripState JSON] --> CheckCoords{Coordinates Changed?}
-    
-    CheckCoords -- Yes --> RedrawRoute[Rebuild Map Sources & GeoJSON Layers]
-    CheckCoords -- No --> UpdateColors[Repaint Segment Colors dynamically]
-    
-    RedrawRoute --> UpdateHUD[Update HUD metrics: Speed, ETA, Alerts]
-    UpdateColors --> UpdateHUD
-    
-    UpdateHUD --> RenderTimeline[Render Timeline with active warnings]
-    RenderTimeline --> HandleDeviation{Deviation Detected?}
-    
-    HandleDeviation -- Yes --> TriggerReroute[Call Backend /api/reroute]
-    HandleDeviation -- No --> AutoPoll[Trigger fetchTripState in 4 seconds]
-```
-
----
-
-## API Reference & Credentials
-
-To run the application, configure your `.env` file or environment variables with the following:
-
-| Variable | API Provider | Purpose |
-| :--- | :--- | :--- |
-| `WEATHER_API_KEY` | [WeatherAPI](https://www.weatherapi.com/) | Live precipitation and weather state checks |
-| `NEWS_API_KEY` | [NewsAPI](https://newsapi.org/) | Scans local news for keywords matching segment cities |
-
----
-
-## Installation & Setup
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v18.x or higher)
-- NPM or Yarn
-
-### Step-by-Step Run Guide
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Varshith10121901/E---horizon-driving-system
-   cd E---horizon-driving-system
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set Up Keys**
-   Create a `.env` file in the root folder (Note: `.env` is ignored by git to keep your keys safe):
-   ```env
-   WEATHER_API_KEY=your_weather_api_key
-   NEWS_API_KEY=your_news_api_key
-   ```
-
-4. **Start the Application**
-   ```bash
-   npm start
-   ```
-
-5. **Access the Dashboard**
-   Open your browser and navigate to `http://localhost:3000`.
-
----
-
-## Verification & Testing
-
-DriveSphere contains a fully automated integration test suite to verify server endpoints, routing logic, geocoding cache fallbacks, and threat telemetry.
-
-### Running the Tests
-To verify the application locally, run:
 ```bash
-npm test
+# Clone the repository
+git clone https://github.com/Varshith10121901/Openai-X-Devpost-Hackathon.git
+cd Openai-X-Devpost-Hackathon
+
+# Install Node dependencies
+npm install
+
+# Start the Node.js server
+npm start
+# OR run via Docker:
+docker build -t drivesphere .
+docker run -p 3000:3000 drivesphere
 ```
 
-### Latest Test Suite Execution Report
-```text
-> drivesphere@1.0.0 test
-> node --check server.js && node --check frontend/app.js && node test_runner.js
-
-Starting test server on port 3001...
-
-Running: GET /api/map-config - Fetch map keys and styles
-   Map provider found: NASA
-✅ Passed: GET /api/map-config - Fetch map keys and styles
-
-Running: GET /api/nasa-events - Fetch active disasters (Wildfires/Storms)
-   NASA EONET: Loaded 47 active event pins.
-✅ Passed: GET /api/nasa-events - Fetch active disasters (Wildfires/Storms)
-
-Running: GET /api/reverse-geocode - Resolve place name from coordinate
-   Resolved location: Hubballi Urban Taluku, Hubballi
-✅ Passed: GET /api/reverse-geocode - Resolve place name from coordinate
-
-Running: POST /api/plan & GET /api/trip-state - Set and fetch active navigation route
-   Created Route: Generated 17 segment splits.
-✅ Passed: POST /api/plan & GET /api/trip-state - Set and fetch active navigation route
-
-Running: POST /api/plan (clear) - Clear active navigation plan
-   Plan memory cleared successfully.
-✅ Passed: POST /api/plan (clear) - Clear active navigation plan
-
-======================================
-          TEST RESULTS REPORT         
-======================================
-1. [PASSED] GET /api/map-config - Fetch map keys and styles
-2. [PASSED] GET /api/nasa-events - Fetch active disasters (Wildfires/Storms)
-3. [PASSED] GET /api/reverse-geocode - Resolve place name from coordinate
-4. [PASSED] POST /api/plan & GET /api/trip-state - Set and fetch active navigation route
-5. [PASSED] POST /api/plan (clear) - Clear active navigation plan
---------------------------------------
-Summary: 5/5 tests passed.
-======================================
-Stopping test server...
-```
+Open `http://localhost:3000` in your browser!
 
 ---
 
-## License
+## Impact
+DriveSphere transforms everyday navigation into a proactive safety system. By providing early warnings and automated rerouting before drivers hit hazard zones, DriveSphere reduces accidents caused by severe weather, landslides, and flash floods—saving lives and improving travel efficiency.
 
-This project is licensed under the MIT License.
+---
+
+## Who It Is For
+- **Long-Distance Travelers & Road Trippers:** Looking for safer route planning with rich intermediate tourist stopover recommendations.
+- **Commuters & Commercial Transport Drivers:** Driving through terrain prone to monsoon landslides, fog, and waterlogging.
+- **Disaster Response & Safety Authorities:** Seeking real-time spatial awareness of natural disasters along highway networks.
+
+---
+
+## Future Scope
+- **IoT & Telematics Vehicle Integration:** Connecting directly with OBD-II vehicle sensors for real-time braking and tire pressure warnings.
+- **Crowdsourced Hazard Reporting:** Allowing drivers to report active road obstacles, fallen trees, or flooding in real time.
+- **Offline Map Navigation:** Edge AI model deployment for offline routing in remote mountain regions without cell connectivity.

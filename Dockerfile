@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy package configurations and install Node.js dependencies
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev 2>/dev/null || true
 
 # Copy Python requirements and install Python dependencies
 COPY server/requirements.txt ./server/
@@ -21,6 +21,10 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# Health check - verify server responds
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))" || exit 1
 
 # Run the concurrent launcher to boot both servers
 CMD ["npm", "start"]

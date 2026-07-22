@@ -12,9 +12,10 @@ const nodeProcess = spawn('node', ['server.js'], {
   stdio: ['inherit', 'pipe', 'pipe']
 });
 
-// 2. Start Flask Python Server
-console.log('[Launcher] Starting Flask auth server (Port 5000)...');
-const pythonProcess = spawn('python', ['app.py'], {
+// 2. Start Flask Python Server (optional — may not exist in all deployments)
+const pythonBin = process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
+console.log(`[Launcher] Starting Flask auth server (Port 5000) using ${pythonBin}...`);
+const pythonProcess = spawn(pythonBin, ['app.py'], {
   cwd: path.join(__dirname, 'server'),
   env: { ...process.env, PORT: '5000' },
   stdio: ['inherit', 'pipe', 'pipe']
@@ -47,10 +48,10 @@ function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log('\n[Launcher] Shutting down all servers...');
-  
+
   nodeProcess.kill('SIGTERM');
   pythonProcess.kill('SIGTERM');
-  
+
   // Force kill after timeout
   setTimeout(() => {
     nodeProcess.kill('SIGKILL');
