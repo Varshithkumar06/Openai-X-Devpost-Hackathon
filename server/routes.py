@@ -1,7 +1,5 @@
 from datetime import datetime, timedelta, timezone
 import os
-import socket
-import subprocess
 
 import jwt
 from flask import Blueprint, jsonify, request
@@ -14,25 +12,6 @@ from otp_service import OTPService
 
 api_bp = Blueprint("api", __name__)
 bcrypt = Bcrypt()
-
-
-def start_node_server():
-    port = 3000
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        in_use = s.connect_ex(('127.0.0.1', port)) == 0
-
-    if not in_use:
-        print(f"[Flask] Node.js server is NOT running on port {port}. Starting it now...")
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        try:
-            log_file_path = os.path.join(root_dir, "node_server.log")
-            log_file = open(log_file_path, "w", encoding="utf-8")
-            subprocess.Popen(["npm", "run", "start-node"], cwd=root_dir, stdout=log_file, stderr=subprocess.STDOUT, shell=True)
-            print(f"[Flask] Node.js server process spawned. Logs at {log_file_path}")
-        except Exception as e:
-            print(f"[Flask] Failed to start Node.js server: {e}")
-    else:
-        print(f"[Flask] Node.js server is already running on port {port}.")
 
 
 def init_bcrypt(app):
@@ -80,7 +59,6 @@ def login():
         user = models.get_user_by_email(email)
 
     token = _generate_jwt(user)
-    start_node_server()
 
     return jsonify({
         "token": token,
@@ -123,7 +101,6 @@ def google_oauth():
         user = models.get_user_by_email(email)
 
     token = _generate_jwt(user)
-    start_node_server()
 
     return jsonify({
         "token": token,
