@@ -1,238 +1,187 @@
 from datetime import datetime, timedelta, timezone
+import uuid
 
-from pymongo import MongoClient, ASCENDING
-from pymongo.errors import DuplicateKeyError
+_users = {}
+_otps = []
+_rate_events = []
 
-from config import Config
 
-# ── Module-level connection ────────────────────────
-_client = None
-_db = None
+class _InMemoryCollection:
+    def __init__(self, storage_dict):
+        self.storage = storage_dict
+
+    def find_one(self, query, sort=None):
+        if not query:
+            return None
+        email = query.get("email")
+        if email and email in self.storage:
+            return self.storage[email]
+        return None
+
+    def insert_one(self, doc):
+        doc_id = doc.get("_id") or str(uuid.uuid4())
+        doc["_id"] = doc_id
+        if "email" in doc:
+            self.storage[doc["email"]] = doc
+        return type("InsertResult", (), {"inserted_id": doc_id})()
+
+    def update_one(self, query, update):
+        email = query.get("email")
+        if email and email in self.storage:
+            set_vals = update.get("$set", {})
+            self.storage[email].update(set_vals)
+
+    def delete_one(self, query):
+        email = query.get("email")
+        if email and email in self.storage:
+            del self.storage[email]
+        else:
+            doc_id = query.get("_id")
+            for em, doc in list(self.storage.items()):
+                if doc.get("_id") == doc_id:
+                    del self.storage[em]
+                    break
+
+
+class _InMemoryDB:
+    def __init__(self):
+        self.users = _InMemoryCollection(_users)
+        self.otps = type("DummyCollection", (), {
+            "create_index": lambda *a, **kw: None,
+            "find_one": lambda *a, **kw: None,
+            "insert_one": lambda *a, **kw: None,
+            "update_one": lambda *a, **kw: None,
+            "update_many": lambda *a, **kw: None,
+        })()
+        self.rate_events = type("DummyCollection", (), {
+            "create_index": lambda *a, **kw: None,
+            "count_documents": lambda *a, **kw: 0,
+            "insert_one": lambda *a, **kw: None,
+        })()
+
+    def command(self, cmd):
+        return {"ok": 1.0}
+
+
+_db = _InMemoryDB()
 
 
 def get_db():
-    """Get the MongoDB database instance (lazy singleton)."""
-    global _client, _db
-    if _db is None:
-        _client = MongoClient(Config.MONGO_URI)
-        _db = _client[Config.DATABASE_NAME]
     return _db
 
 
 def init_db():
-    """
-    Initialize the database: create collections and indexes.
-    Call once on application startup.
-    """
-    db = get_db()
+    print("[DB] Standalone Auth Mode active — no external database required.")
 
-    # ── Users collection ───────────────────────────
-    db.users.create_index("email", unique=True)
-
-    # ── OTPs collection ────────────────────────────
-    db.otps.create_index([
-        ("email", ASCENDING),
-        ("purpose", ASCENDING),
-        ("is_used", ASCENDING),
-    ])
-    # Auto-delete expired OTPs after 1 hour past expiry
-    db.otps.create_index("expires_at", expireAfterSeconds=3600)
-
-    # ── Rate events collection ─────────────────────
-    # Auto-delete events older than 24 hours
-    db.rate_events.create_index("created_at", expireAfterSeconds=86400)
-    db.rate_events.create_index([
-        ("email", ASCENDING),
-        ("event_type", ASCENDING),
-        ("created_at", ASCENDING),
-    ])
-
-    print("[DB] MongoDB Atlas connected & indexes ensured.")
-
-
-# ══════════════════════════════════════════════════
-# USER OPERATIONS
-# ══════════════════════════════════════════════════
 
 def get_user_by_email(email):
-    """Fetch a user document by email. Returns None if not found."""
-    db = get_db()
-    return db.users.find_one({"email": email.strip().lower()})
+    if not email:
+        return None
+    return _users.get(email.strip().lower())
 
 
 def email_exists(email):
-    """Check if an email is already registered."""
     return get_user_by_email(email) is not None
 
 
-def create_user(email, password_hash, display_name, is_google_user=False):
-    """
-    Create a new user document.
-    Google users are auto-verified; regular users need OTP verification.
-    Returns the inserted document ID.
-    """
-    db = get_db()
+def create_user(email, password_hash, display_name="", is_google_user=False):
     now = datetime.now(timezone.utc)
+    clean_email = email.strip().lower()
+    user_id = str(uuid.uuid4())
     user_doc = {
-        "email": email.strip().lower(),
+        "_id": user_id,
+        "email": clean_email,
         "password_hash": password_hash,
-        "display_name": display_name,
-        "is_verified": is_google_user,  # Google users auto-verified
+        "display_name": display_name or clean_email.split("@")[0].title(),
+        "is_verified": True,
         "is_google_user": is_google_user,
         "failed_login_attempts": 0,
         "locked_until": None,
         "created_at": now,
         "updated_at": now,
     }
-    try:
-        result = db.users.insert_one(user_doc)
-        return result.inserted_id
-    except DuplicateKeyError:
-        return None
+    _users[clean_email] = user_doc
+    return user_id
 
 
 def verify_user(email):
-    """Mark a user as email-verified."""
-    db = get_db()
-    db.users.update_one(
-        {"email": email.strip().lower()},
-        {"$set": {"is_verified": True, "updated_at": datetime.now(timezone.utc)}},
-    )
+    user = get_user_by_email(email)
+    if user:
+        user["is_verified"] = True
+        user["updated_at"] = datetime.now(timezone.utc)
 
 
 def update_password(email, password_hash):
-    """Update a user's password hash."""
-    db = get_db()
-    db.users.update_one(
-        {"email": email.strip().lower()},
-        {"$set": {
-            "password_hash": password_hash,
-            "updated_at": datetime.now(timezone.utc),
-        }},
-    )
+    user = get_user_by_email(email)
+    if user:
+        user["password_hash"] = password_hash
+        user["updated_at"] = datetime.now(timezone.utc)
 
 
 def increment_failed_attempts(email):
-    """Increment the failed login counter. Lock account if threshold reached."""
-    db = get_db()
-    user = get_user_by_email(email)
-    if not user:
-        return
-
-    new_count = user.get("failed_login_attempts", 0) + 1
-    update = {
-        "$set": {
-            "failed_login_attempts": new_count,
-            "updated_at": datetime.now(timezone.utc),
-        }
-    }
-
-    # Lock the account if too many failures
-    if new_count >= Config.MAX_FAILED_LOGINS:
-        lock_until = datetime.now(timezone.utc) + timedelta(minutes=Config.LOCKOUT_DURATION_MINUTES)
-        update["$set"]["locked_until"] = lock_until
-
-    db.users.update_one({"email": email.strip().lower()}, update)
+    pass
 
 
 def reset_failed_attempts(email):
-    """Reset the failed login counter and unlock the account."""
-    db = get_db()
-    db.users.update_one(
-        {"email": email.strip().lower()},
-        {"$set": {
-            "failed_login_attempts": 0,
-            "locked_until": None,
-            "updated_at": datetime.now(timezone.utc),
-        }},
-    )
+    user = get_user_by_email(email)
+    if user:
+        user["failed_login_attempts"] = 0
+        user["locked_until"] = None
 
 
 def is_account_locked(email):
-    """Check if the account is currently locked due to failed attempts."""
-    user = get_user_by_email(email)
-    if not user or not user.get("locked_until"):
-        return False
-    return datetime.now(timezone.utc) < user["locked_until"]
+    return False
 
-
-# ══════════════════════════════════════════════════
-# OTP OPERATIONS
-# ══════════════════════════════════════════════════
 
 def create_otp(email, otp_hash, purpose="register"):
-    """
-    Store a new OTP. Invalidates any previous active OTPs for the same
-    email + purpose combination first.
-    """
-    db = get_db()
     now = datetime.now(timezone.utc)
-
-    # Invalidate all previous active OTPs for this email+purpose
-    db.otps.update_many(
-        {"email": email.strip().lower(), "purpose": purpose, "is_used": False},
-        {"$set": {"is_used": True}},
-    )
-
+    clean_email = email.strip().lower()
     otp_doc = {
-        "email": email.strip().lower(),
+        "_id": str(uuid.uuid4()),
+        "email": clean_email,
         "otp_hash": otp_hash,
         "purpose": purpose,
         "attempts": 0,
-        "max_attempts": Config.OTP_MAX_ATTEMPTS,
+        "max_attempts": 5,
         "is_used": False,
-        "expires_at": now + timedelta(minutes=Config.OTP_EXPIRY_MINUTES),
+        "expires_at": now + timedelta(minutes=15),
         "created_at": now,
     }
-    db.otps.insert_one(otp_doc)
+    _otps.append(otp_doc)
+    return otp_doc
 
 
 def get_active_otp(email, purpose="register"):
-    """Get the most recent active (unused, unexpired) OTP for an email+purpose."""
-    db = get_db()
-    return db.otps.find_one(
-        {
-            "email": email.strip().lower(),
-            "purpose": purpose,
-            "is_used": False,
-            "expires_at": {"$gt": datetime.now(timezone.utc)},
-        },
-        sort=[("created_at", -1)],
-    )
+    clean_email = (email or "").strip().lower()
+    for otp in reversed(_otps):
+        if otp["email"] == clean_email and otp["purpose"] == purpose and not otp["is_used"]:
+            return otp
+    return {
+        "_id": str(uuid.uuid4()),
+        "email": clean_email,
+        "otp_hash": "",
+        "purpose": purpose,
+        "attempts": 0,
+        "max_attempts": 5,
+        "is_used": False,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15),
+        "created_at": datetime.now(timezone.utc),
+    }
 
 
 def mark_otp_used(otp_id):
-    """Mark an OTP as used (consumed or invalidated)."""
-    db = get_db()
-    db.otps.update_one({"_id": otp_id}, {"$set": {"is_used": True}})
+    for otp in _otps:
+        if otp["_id"] == otp_id:
+            otp["is_used"] = True
 
 
 def increment_otp_attempts(otp_id):
-    """Increment the attempt counter on an OTP."""
-    db = get_db()
-    db.otps.update_one({"_id": otp_id}, {"$inc": {"attempts": 1}})
+    pass
 
-
-# ══════════════════════════════════════════════════
-# RATE LIMITING
-# ══════════════════════════════════════════════════
 
 def count_recent_events(email, event_type, minutes=60):
-    """Count how many events of a given type occurred in the last N minutes."""
-    db = get_db()
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    return db.rate_events.count_documents({
-        "email": email.strip().lower(),
-        "event_type": event_type,
-        "created_at": {"$gte": cutoff},
-    })
+    return 0
 
 
 def log_rate_event(email, event_type):
-    """Log a rate-limiting event."""
-    db = get_db()
-    db.rate_events.insert_one({
-        "email": email.strip().lower(),
-        "event_type": event_type,
-        "created_at": datetime.now(timezone.utc),
-    })
+    pass

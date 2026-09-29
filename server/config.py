@@ -32,9 +32,6 @@ _load_env_file()
 
 
 class Config:
-    MONGO_URI = os.environ.get("MONGO_URI", "")
-    DATABASE_NAME = os.environ.get("DATABASE_NAME", "drivesphere")
-
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
