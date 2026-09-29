@@ -1,6 +1,11 @@
 import os
 import sys
 
+# Ensure local modules (models, routes, config) are resolvable
+server_dir = os.path.dirname(os.path.abspath(__file__))
+if server_dir not in sys.path:
+    sys.path.insert(0, server_dir)
+
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 
