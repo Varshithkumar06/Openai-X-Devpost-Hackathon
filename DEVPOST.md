@@ -7,7 +7,7 @@
 ## Project Overview
 - **Project Title:** E-Horizon & DriveSphere — Intelligent AI Driver Assistance & Smart Trip Planner
 - **Tagline:** Next-generation hazard-aware dynamic routing, real-time telemetry, and AI itinerary generation for safer journeys across India.
-- **Source Code:** [GitHub Repository](https://github.com/Varshith10121901/Openai-X-Devpost-Hackathon.git)
+- **Source Code:** [GitHub Repository](https://github.com/Varshithkumar06/Openai-X-Devpost-Hackathon.git)
 - **Live Deployment:** [http://localhost:3000](http://localhost:3000) *(Production Docker Container Ready)*
 - **Demo Video:** [Watch Live Demonstration](#)
 
@@ -198,6 +198,6 @@ DriveSphere transforms everyday navigation into a proactive safety system. By pr
 ---
 
 ## Links & Resources
-- **Source Code:** `https://github.com/Varshith10121901/Openai-X-Devpost-Hackathon.git`
+- **Source Code:** `https://github.com/Varshithkumar06/Openai-X-Devpost-Hackathon.git`
 - **Live Deployment:** `http://localhost:3000` *(Docker Container Ready)*
 - **Demo Video:** [Watch Video Demonstration](#)
