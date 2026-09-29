@@ -72,7 +72,6 @@ nodeProcess.on('exit', (code) => {
 
 pythonProcess.on('exit', (code) => {
   if (!isShuttingDown) {
-    console.log(`[Launcher] Flask process exited with code ${code}`);
-    shutdown();
+    console.log(`[Launcher] Flask process exited with code ${code}. Node.js dashboard server remains active.`);
   }
 });

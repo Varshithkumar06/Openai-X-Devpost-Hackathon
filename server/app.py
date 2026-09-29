@@ -63,9 +63,9 @@ def main():
         db.command("ping")
         print("[INIT] OK - MongoDB Atlas connection verified.")
     except Exception as e:
-        print(f"[ERROR] FAIL - Could not connect to MongoDB Atlas: {e}")
-        print("[ERROR]   Check your internet connection and MongoDB credentials.")
-        sys.exit(1)
+        print(f"[WARN] Could not connect to MongoDB Atlas: {e}")
+        print("[WARN] Check your internet connection and MongoDB credentials.")
+        print("[WARN] Server will continue running with limited auth functionality.")
 
     print("[INIT] OK - Email service configured (Gmail SMTP).")
     print("[INIT] OK - OTP service ready (SHA-256 hashed, 5-min expiry).")
