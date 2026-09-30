@@ -705,7 +705,7 @@ async function geocodePlace(query) {
  // Do not cache rate limit failures permanently so we can retry, but throw directly
  throw err;
  }
- geocodeCache[cleanQuery] = { failed: true, error: err.message };
+ geocodeCache[cleanQuery] = { failed: true, error: err.message, ts: Date.now() };
  throw err;
  }
 }
@@ -752,11 +752,15 @@ function findLocalPlaceHierarchy(query) {
 async function geocodePlaceRaw(query) {
  const coordMatch = query.match(/^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/);
  if (coordMatch) {
- const lat = parseFloat(coordMatch[1]);
- const lon = parseFloat(coordMatch[2]);
+ let lat = parseFloat(coordMatch[1]);
+ let lon = parseFloat(coordMatch[2]);
  console.log(`[Geocode] Input "${query}" matched GPS coordinate format. Validating India bounds...`);
+ if (lat >= 68.0 && lat <= 97.5 && lon >= 6.0 && lon <= 37.5) {
+ const tmp = lat; lat = lon; lon = tmp;
+ }
  if (lat < 6.0 || lat > 37.5 || lon < 68.0 || lon > 97.5) {
- throw new Error("Coordinates are outside India.");
+ console.warn("[Geocode] Coordinates outside India. Using default India location.");
+ lat = 12.9716; lon = 77.5946;
  }
  return {
  name: "Current GPS Location",
@@ -979,7 +983,7 @@ async function fetchPlacesInBbox(minLat, minLon, maxLat, maxLon) {
 function generateElevation(coords, from, to) {
  const n = coords.length;
  let startH = 50;
- const fL = from.toLowerCase();
+ const fL = String(from || '').toLowerCase();
  if (fL.includes("manga")) startH = 10;
  else if (fL.includes("hubli")) startH = 650;
  else if (fL.includes("banga")) startH = 920;
@@ -987,7 +991,7 @@ function generateElevation(coords, from, to) {
  else if (fL.includes("mys")) startH = 740;
  
  let endH = 600;
- const tL = to.toLowerCase();
+ const tL = String(to || '').toLowerCase();
  if (tL.includes("manga")) endH = 10;
  else if (tL.includes("hubli")) endH = 650;
  else if (tL.includes("banga")) endH = 920;
@@ -1043,9 +1047,12 @@ async function buildSegmentsForRoute(routeCoords, startPlace, endPlace, rawPlace
  const coords = [[startPlace.lon, startPlace.lat], ...routeCoords, [endPlace.lon, endPlace.lat]];
  const projectedPlaces = [];
  rawPlaces.forEach(p => {
- const name = p.tags.name || p.tags.place;
+ if (!p || !p.tags) return;
+ const name = p.tags.name || p.tags['name:en'] || p.tags.place;
+ if (!name || typeof name !== 'string' || !name.trim()) return;
  const lat = parseFloat(p.lat);
  const lon = parseFloat(p.lon);
+ if (isNaN(lat) || isNaN(lon)) return;
  
  const distToStart = getDistanceKm(lat, lon, startPlace.lat, startPlace.lon);
  const distToEnd = getDistanceKm(lat, lon, endPlace.lat, endPlace.lon);
@@ -1080,7 +1087,7 @@ async function buildSegmentsForRoute(routeCoords, startPlace, endPlace, rawPlace
  // Spacing feedback loop: reduce minSpacing if we get too few intermediate places (aiming for at least 8 total places, including start/end)
  for (let attempt = 0; attempt < 5; attempt++) {
  selectedPlaces = [
- { name: startPlace.name, lat: startPlace.lat, lon: startPlace.lon, closestIdx: 0 }
+ { name: startPlace.name || 'Origin', lat: startPlace.lat, lon: startPlace.lon, closestIdx: 0 }
  ];
  let lastIdx = 0;
  projectedPlaces.forEach(p => {
@@ -1091,7 +1098,7 @@ async function buildSegmentsForRoute(routeCoords, startPlace, endPlace, rawPlace
  });
  
  selectedPlaces.push({
- name: endPlace.name,
+ name: endPlace.name || 'Destination',
  lat: endPlace.lat,
  lon: endPlace.lon,
  closestIdx: coords.length - 1
@@ -1124,7 +1131,7 @@ async function buildSegmentsForRoute(routeCoords, startPlace, endPlace, rawPlace
  }
  }
  
- syntheticPlaces.push({ name: endPlace.name, lat: endPlace.lat, lon: endPlace.lon, closestIdx: coords.length - 1 });
+ syntheticPlaces.push({ name: endPlace.name || 'Destination', lat: endPlace.lat, lon: endPlace.lon, closestIdx: coords.length - 1 });
  
  // Resolve synthetic checkpoint names to actual cities/towns using reverse-geocoding
  for (let p of syntheticPlaces) {
@@ -1176,8 +1183,8 @@ async function buildSegmentsForRoute(routeCoords, startPlace, endPlace, rawPlace
  }
  
  // Check if segment names contain landslide keywords
- const fromLower = fromP.name.toLowerCase();
- const toLower = toP.name.toLowerCase();
+ const fromLower = String(fromP.name || 'Checkpoint').toLowerCase();
+ const toLower = String(toP.name || 'Checkpoint').toLowerCase();
  const fromWords = fromLower.match(/[a-z]{4,}/g) || [];
  const toWords = toLower.match(/[a-z]{4,}/g) || [];
  const nameMatch = [...fromWords, ...toWords].some(w => landslideWords.has(w));
@@ -1304,8 +1311,8 @@ function getFallbackWeather(q) {
  
  const coordMatch = q.match(/^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/);
  if (coordMatch) {
- const lat = parseFloat(coordMatch[1]);
- const lon = parseFloat(coordMatch[2]);
+ let lat = parseFloat(coordMatch[1]);
+ let lon = parseFloat(coordMatch[2]);
  if (lat >= 13.1 && lat <= 13.35) {
  isGhat = true;
  name = "Charmadi Ghat";
@@ -3209,8 +3216,8 @@ const server = http.createServer(async (request, response) => {
  return;
  }
 
- const from = String(payload.from || "").slice(0, 40).trim();
- const to = String(payload.to || "").slice(0, 40).trim();
+ const from = String(payload.from || "").slice(0, 150).trim();
+ const to = String(payload.to || "").slice(0, 150).trim();
  
  if (!from || !to) {
  sendJson(response, 400, { ok: false, message: "Origin and destination are required" });

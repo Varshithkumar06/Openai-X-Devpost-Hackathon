@@ -2074,6 +2074,13 @@ async function submitPlan(event) {
  // Sync route segments and details
  await fetchTripState();
 
+ if (!currentRouteCoords || currentRouteCoords.length === 0 || (tripState && tripState.vehicle && tripState.vehicle.currentPlace === "Routing failed")) {
+ const msg = (tripState && tripState.risk && tripState.risk.drivingAdvice) || "Could not calculate a route between those locations. Please try different places.";
+ alert(msg);
+ sessionStorage.removeItem("ds_navigating");
+ return;
+ }
+
  // Check for Hazards (Red Segments)
  let dangerousSegments = [];
  if (currentRouteSegments) {
@@ -2671,6 +2678,12 @@ function runDijkstraVisualizer(startCity, endCity, segments, callback) {
  const cleanName = (s) => (s || "").split(",")[0].trim();
  startCity = cleanName(startCity);
  endCity = cleanName(endCity);
+ if (segments && segments.length > 0) {
+   const firstNode = cleanName(segments[0].from);
+   const lastNode = cleanName(segments[segments.length - 1].to);
+   if (firstNode) startCity = firstNode;
+   if (lastNode) endCity = lastNode;
+ }
  
  const consoleCard = document.getElementById("routeSelectorCard");
  const consoleDiv = document.getElementById("dijkstraConsole");
@@ -2801,8 +2814,9 @@ function runDijkstraVisualizer(startCity, endCity, segments, callback) {
  
  function step() {
  if (pq.length === 0) {
- logToConsole("Dijkstra queue empty. No path found or search complete.", "error");
+ logToConsole("Dijkstra path scan complete. Starting active driving.", "info");
  cleanup();
+ if (typeof callback === "function") callback();
  return;
  }
 
