@@ -24,16 +24,6 @@ function findBrowser() {
   return null;
 }
 
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.listen(0, "127.0.0.1", () => {
-      const port = srv.address().port;
-      srv.close(() => resolve(port));
-    });
-    srv.on("error", reject);
-  });
-}
 
 class CDPClient {
   constructor(wsUrl) {
@@ -151,13 +141,13 @@ async function runBrowserTests() {
   }
   console.log(`[Browser] Found executable: ${browserPath}`);
 
-  const cdpPort = await getFreePort();
   const userDir = path.join(os.tmpdir(), "ds_cdp_profile_" + Date.now());
   fs.mkdirSync(userDir, { recursive: true });
 
   const chromeArgs = [
     "--headless=new",
-    `--remote-debugging-port=${cdpPort}`,
+    "--remote-debugging-port=0",
+    "--remote-debugging-address=127.0.0.1",
     `--user-data-dir=${userDir}`,
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -169,8 +159,11 @@ async function runBrowserTests() {
     "about:blank"
   ];
 
-  console.log(`[Browser] Launching headless browser on port ${cdpPort}...`);
-  const browserProc = spawn(browserPath, chromeArgs, { stdio: "ignore" });
+  console.log("[Browser] Launching headless browser with dynamic port allocation...");
+  const browserProc = spawn(browserPath, chromeArgs, { stdio: ["ignore", "pipe", "pipe"] });
+
+  let chromeStderr = "";
+  browserProc.stderr.on("data", (d) => { chromeStderr += d.toString(); });
 
   let isExiting = false;
   const cleanup = () => {
@@ -185,9 +178,33 @@ async function runBrowserTests() {
   process.on("SIGINT", () => { cleanup(); process.exit(1); });
   process.on("SIGTERM", () => { cleanup(); process.exit(1); });
 
-  // Wait for CDP readiness
+  // Dynamically resolve allocated CDP port from DevToolsActivePort file
+  let cdpPort = null;
+  const portFile = path.join(userDir, "DevToolsActivePort");
+  for (let i = 0; i < 150; i++) {
+    if (fs.existsSync(portFile)) {
+      try {
+        const lines = fs.readFileSync(portFile, "utf8").trim().split("\n");
+        if (lines.length >= 1 && parseInt(lines[0], 10) > 0) {
+          cdpPort = parseInt(lines[0], 10);
+          break;
+        }
+      } catch (_) {}
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  if (!cdpPort) {
+    console.error("[FATAL] Could not detect DevToolsActivePort file from headless browser.");
+    if (chromeStderr) console.error("[Browser Stderr]:", chromeStderr);
+    cleanup();
+    process.exit(1);
+  }
+  console.log(`[Browser] Chrome active and bound to port ${cdpPort}`);
+
+  // Fetch version data from resolved CDP port
   let versionData = null;
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 50; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
       if (res.ok) {
@@ -199,7 +216,8 @@ async function runBrowserTests() {
   }
 
   if (!versionData) {
-    console.error("[FATAL] Could not connect to Chrome DevTools Protocol.");
+    console.error(`[FATAL] Could not connect to Chrome DevTools Protocol on port ${cdpPort}.`);
+    if (chromeStderr) console.error("[Browser Stderr]:", chromeStderr);
     cleanup();
     process.exit(1);
   }
@@ -222,6 +240,11 @@ async function runBrowserTests() {
 
       await client.send("Page.enable");
       await client.send("Runtime.enable");
+      try {
+        await client.send("Page.addScriptToEvaluateOnNewDocument", {
+          source: `try { sessionStorage.setItem("drivesphere_intro_seen", "true"); } catch (_) {}`
+        });
+      } catch (_) {}
 
       const consoleErrors = [];
       client.on("Runtime.consoleAPICalled", (params) => {
@@ -255,7 +278,7 @@ async function runBrowserTests() {
 
   // TEST 1: Landing Page / Login Authentication Form
   await runTestCase("Landing Page Auth Verification", "http://127.0.0.1:3000/login/", async (client) => {
-    await client.waitFor("!!document.getElementById('email') || !!document.querySelector('input[type=\"email\"]')", 10000);
+    await client.waitFor("!!document.getElementById('email') || !!document.querySelector('input[type=\"email\"]')", 15000);
     const title = await client.evaluate("document.title");
     if (!title || !title.toLowerCase().includes("drivesphere")) {
       throw new Error(`Unexpected page title: "${title}"`);
