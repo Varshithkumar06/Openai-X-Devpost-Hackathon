@@ -485,7 +485,27 @@ function initMap() {
 
  // Fetch EONET markers
  fetchNASAEvents();
+
+ map.resize();
+ setTimeout(() => { if (map) map.resize(); }, 150);
+ setTimeout(() => { if (map) map.resize(); }, 500);
  });
+
+ window.addEventListener("resize", () => {
+  if (map) map.resize();
+ });
+
+ document.addEventListener("fullscreenchange", () => {
+  setTimeout(() => { if (map) map.resize(); }, 100);
+ });
+
+ const mapWrapper = document.getElementById("mapWrapper");
+ if (mapWrapper && typeof ResizeObserver !== "undefined") {
+  const ro = new ResizeObserver(() => {
+   if (map) map.resize();
+  });
+  ro.observe(mapWrapper);
+ }
 
  map.on("error", (e) => {
  console.warn("[MapLibre GL Error]", e.error?.message || e);
@@ -2377,20 +2397,26 @@ function initializeDrivingView() {
  globeAnim.destroy();
  globeAnim = null;
  }
+ if (ui.mapPlaceholder) {
  ui.mapPlaceholder.style.opacity = "0";
- setTimeout(() => {
  ui.mapPlaceholder.style.display = "none";
- }, 800);
+ }
 
  // Show Map Libregl
+ if (ui.map3d) {
  ui.map3d.style.opacity = "1";
  ui.map3d.style.pointerEvents = "auto";
+ }
+ if (ui.mapStyleLabel) {
  ui.mapStyleLabel.style.display = "block";
+ }
 
- // Trigger Map resize in next frame to draw canvas properly
- requestAnimationFrame(() => {
+ // Trigger Map resize to ensure canvas matches bounds
+ if (map) {
  map.resize();
- });
+ setTimeout(() => { if (map) map.resize(); }, 100);
+ setTimeout(() => { if (map) map.resize(); }, 400);
+ }
 
  // Load Three.js weather particle overlay
  weatherOverlay = initThreeOverlay();
