@@ -1414,7 +1414,7 @@ async function fetchNewsAPI(currentPlace, nextPlace) {
  // 1. SauravTech Categories Fetch (Indian Top Headlines)
  const categories = ["general", "business", "technology", "science"];
  const sauravPromises = categories.map(async (cat) => {
- const url = `https://saurav.tech/NewsAPI/top-headlines/category/${cat}/in.json`;
+ const url = `http://saurav.tech/NewsAPI/top-headlines/category/${cat}/in.json`;
  const controller = new AbortController();
  const timeoutId = setTimeout(() => controller.abort(), 5000);
  try {
