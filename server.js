@@ -3261,6 +3261,13 @@ const server = http.createServer(async (request, response) => {
 });
 
 if (require.main === module) {
+ process.on('uncaughtException', (err) => {
+ console.error('[Server UncaughtException]', err ? err.message || err : 'Unknown error');
+ });
+ process.on('unhandledRejection', (reason) => {
+ console.warn('[Server UnhandledRejection]', reason ? reason.message || reason : 'Unknown rejection');
+ });
+
  server.on('error', (err) => {
  if (err.code === 'EADDRINUSE') {
  console.error(`[ERROR] Port ${PORT} is already in use. Please stop the other process or use a different port.`);
