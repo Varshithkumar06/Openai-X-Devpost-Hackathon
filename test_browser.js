@@ -128,7 +128,7 @@ async function runBrowserTests() {
   fs.mkdirSync(userDir, { recursive: true });
 
   const chromeArgs = [
-    "--headless=new",
+    "--headless",
     `--remote-debugging-port=${cdpPort}`,
     `--user-data-dir=${userDir}`,
     "--no-sandbox",
@@ -158,7 +158,7 @@ async function runBrowserTests() {
 
   // Wait for CDP readiness
   let versionData = null;
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 60; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
       if (res.ok) {
@@ -166,7 +166,7 @@ async function runBrowserTests() {
         break;
       }
     } catch (_) {}
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 250));
   }
 
   if (!versionData) {
