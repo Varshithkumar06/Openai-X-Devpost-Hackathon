@@ -359,42 +359,37 @@ function initMap() {
  attribution: "© NASA GIBS MODIS"
  });
 
- // 4. CartoDB Dark Matter (Cyberpunk theme)
+ // 4. Dark Matter (Dark Gray Canvas theme)
  map.addSource("dark-tiles", {
  type: "raster",
  tiles: [
- "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
- "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
- "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
- "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+ "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
  ],
  tileSize: 256,
- maxzoom: 18,
- attribution: "© CartoDB"
+ maxzoom: 16,
+ attribution: "© Esri"
  });
 
- // 5. CartoDB Voyager (Street map style)
+ // 5. OpenStreetMap (Street map style)
  map.addSource("osm-tiles", {
  type: "raster",
  tiles: [
- "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
- "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
- "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
- "https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+ "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
  ],
  tileSize: 256,
- maxzoom: 18,
- attribution: "© CartoDB, © OpenStreetMap"
+ maxzoom: 19,
+ attribution: "© OpenStreetMap contributors"
  });
 
- // Labels overlay
+ // Labels overlay (High-resolution, keyless Esri Reference overlay)
  map.addSource("map-labels", {
  type: "raster",
  tiles: [
- "https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png"
+ "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
  ],
  tileSize: 256,
- maxzoom: 18
+ maxzoom: 19,
+ attribution: "© Esri"
  });
 
  // Add AWS DEM Terrain Source (3D Elevation Model)

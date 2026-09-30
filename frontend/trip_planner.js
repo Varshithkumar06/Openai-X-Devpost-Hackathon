@@ -559,7 +559,7 @@
  sources: {
  "dark-tiles": {
  type: "raster",
- tiles: ["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"],
+ tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
  tileSize: 256,
  attribution: "&copy; CartoDB &copy; E-Horizon System",
  },

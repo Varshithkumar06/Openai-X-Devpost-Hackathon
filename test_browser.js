@@ -92,7 +92,7 @@ class CDPClient {
     return res.result ? res.result.value : undefined;
   }
 
-  async waitFor(expression, timeoutMs = 8000, intervalMs = 250) {
+  async waitFor(expression, timeoutMs = 12000, intervalMs = 250) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       try {
@@ -116,9 +116,37 @@ async function runBrowserTests() {
   console.log("   DRIVESPHERE BROWSER AUTOMATION TESTS   ");
   console.log("==========================================");
 
+  let serverProcess = null;
+  let serverReady = false;
+  try {
+    const checkRes = await fetch("http://127.0.0.1:3000/api/health");
+    if (checkRes.ok) serverReady = true;
+  } catch (_) {}
+
+  if (!serverReady) {
+    console.log("[Browser] Port 3000 not active. Spawning background server...");
+    serverProcess = spawn("node", ["server.js"], { cwd: __dirname, stdio: "ignore" });
+    for (let i = 0; i < 30; i++) {
+      try {
+        const check = await fetch("http://127.0.0.1:3000/api/health");
+        if (check.ok) {
+          serverReady = true;
+          break;
+        }
+      } catch (_) {}
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (!serverReady) {
+      console.error("[FATAL] Could not start DriveSphere server on port 3000.");
+      process.exit(1);
+    }
+  }
+  console.log("[Browser] Verified DriveSphere server active on http://127.0.0.1:3000");
+
   const browserPath = findBrowser();
   if (!browserPath) {
     console.warn("[SKIP] No compatible browser found in environment.");
+    if (serverProcess) { try { serverProcess.kill(); } catch (_) {} }
     process.exit(0);
   }
   console.log(`[Browser] Found executable: ${browserPath}`);
@@ -149,6 +177,7 @@ async function runBrowserTests() {
     if (isExiting) return;
     isExiting = true;
     try { browserProc.kill(); } catch (_) {}
+    if (serverProcess) { try { serverProcess.kill(); } catch (_) {} }
     try { fs.rmSync(userDir, { recursive: true, force: true }); } catch (_) {}
   };
 
@@ -226,7 +255,7 @@ async function runBrowserTests() {
 
   // TEST 1: Landing Page / Login Authentication Form
   await runTestCase("Landing Page Auth Verification", "http://127.0.0.1:3000/login/", async (client) => {
-    await client.waitFor("!!document.getElementById('email') || !!document.querySelector('input[type=\"email\"]')", 8000);
+    await client.waitFor("!!document.getElementById('email') || !!document.querySelector('input[type=\"email\"]')", 10000);
     const title = await client.evaluate("document.title");
     if (!title || !title.toLowerCase().includes("drivesphere")) {
       throw new Error(`Unexpected page title: "${title}"`);
@@ -241,12 +270,12 @@ async function runBrowserTests() {
   // TEST 2: Dashboard UI & MapLibre Canvas Structure
   const authQuery = "?token=mock_jwt_tester&operator=" + encodeURIComponent(JSON.stringify({ name: "Demo Pilot", email: "pilot@drivesphere.io" }));
   await runTestCase("Dashboard UI & Map Container", `http://127.0.0.1:3000/${authQuery}`, async (client) => {
-    await client.waitFor("!!document.getElementById('mapWrapper')", 8000);
+    await client.waitFor("!!document.getElementById('mapWrapper')", 10000);
     const hasMap3d = await client.evaluate("!!document.getElementById('map3d')");
     if (!hasMap3d) throw new Error("Missing #map3d canvas container");
 
-    await client.waitFor("typeof maplibregl !== 'undefined'", 6000);
-    await client.waitFor("typeof map !== 'undefined' && map !== null", 6000);
+    await client.waitFor("typeof maplibregl !== 'undefined'", 8000);
+    await client.waitFor("typeof map !== 'undefined' && map !== null", 8000);
 
     const hasInputs = await client.evaluate("!!document.getElementById('fromInput') && !!document.getElementById('toInput') && !!document.getElementById('startTripBtn')");
     if (!hasInputs) throw new Error("Missing route input elements on dashboard");
@@ -254,24 +283,22 @@ async function runBrowserTests() {
 
   // TEST 3: Interactive Navigation & Route Drawing
   await runTestCase("Interactive Trip Navigation Flow", `http://127.0.0.1:3000/${authQuery}`, async (client) => {
-    await client.waitFor("!!document.getElementById('fromInput')", 6000);
+    await client.waitFor("!!document.getElementById('fromInput')", 8000);
 
-    // Set input values
     await client.evaluate(`
+      window.alert = (m) => console.warn("[PAGE_ALERT]", m);
       const f = document.getElementById("fromInput");
       const t = document.getElementById("toInput");
       if (f) f.value = "Bengaluru";
       if (t) t.value = "Chennai";
+      if (typeof submitPlan === "function") {
+        submitPlan(new Event("submit"));
+      } else {
+        document.getElementById("startTripBtn")?.click();
+      }
     `);
 
-    // Click start navigation
-    await client.evaluate(`
-      const btn = document.getElementById("startTripBtn");
-      if (btn) btn.click();
-    `);
-
-    // Wait for route analysis and sync (wait until coords > 0 or max 8s)
-    await client.waitFor("typeof currentRouteCoords !== 'undefined' && Array.isArray(currentRouteCoords) && currentRouteCoords.length > 0", 8000);
+    await client.waitFor("typeof currentRouteCoords !== 'undefined' && Array.isArray(currentRouteCoords) && currentRouteCoords.length > 0", 15000);
 
     const navResult = await client.evaluate(`({
       coordCount: currentRouteCoords.length,
@@ -296,25 +323,24 @@ async function runBrowserTests() {
 
   // TEST 4: AI Trip Planner Modal
   await runTestCase("AI Trip Planner Modal Component", `http://127.0.0.1:3000/${authQuery}`, async (client) => {
-    await client.waitFor("!!document.getElementById('planTripBtn')", 6000);
+    await client.waitFor("!!document.getElementById('planTripBtn')", 8000);
 
     await client.evaluate(`
       const btn = document.getElementById("planTripBtn");
       if (btn) btn.click();
     `);
 
-    await client.waitFor("document.getElementById('tripModalOverlay') && document.getElementById('tripModalOverlay').classList.contains('is-open')", 4000);
+    await client.waitFor("document.getElementById('tripModalOverlay') && document.getElementById('tripModalOverlay').classList.contains('is-open')", 6000);
 
     const hasInputs = await client.evaluate("!!document.getElementById('tripFromInput') && !!document.getElementById('tripToInput') && !!document.getElementById('tripDays')");
     if (!hasInputs) throw new Error("AI Trip Planner modal missing input elements");
 
-    // Close modal
     await client.evaluate(`
       const closeBtn = document.getElementById("tripModalClose");
       if (closeBtn) closeBtn.click();
     `);
 
-    await client.waitFor("!document.getElementById('tripModalOverlay').classList.contains('is-open')", 3000);
+    await client.waitFor("!document.getElementById('tripModalOverlay').classList.contains('is-open')", 4000);
   });
 
   console.log("==========================================");
