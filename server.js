@@ -3247,7 +3247,8 @@ const server = http.createServer(async (request, response) => {
  return;
  }
 
- const safePath = url.pathname === "/" ? "/index.html" : url.pathname;
+ const cleanPrefix = url.pathname.replace(/^\/frontend/, "");
+ const safePath = (cleanPrefix === "" || cleanPrefix === "/") ? "/index.html" : cleanPrefix;
  const filePath = path.normalize(path.join(PUBLIC_DIR, safePath));
 
  if (!filePath.startsWith(PUBLIC_DIR)) {

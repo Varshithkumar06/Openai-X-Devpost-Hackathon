@@ -9,7 +9,9 @@
     "dev": "node start.js",
     "start-node": "node server.js",
     "start-python": "python server/app.py",
-    "test": "node --check server.js && node --check frontend/app.js && node test_runner.js"
+    "test": "node --check server.js && node --check frontend/app.js && node test_runner.js",
+    "test:browser": "node test_browser.js",
+    "test:all": "node --check server.js && node --check frontend/app.js && node test_runner.js && node test_browser.js"
   },
   "engines": {
     "node": ">=18"
